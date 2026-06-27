@@ -15,10 +15,12 @@
   body.dark{ --bg:#0d0d14; --card:#16161f; --ink:#f3f3f7; --muted:#9a9ab0;
     --line:#262633; --them:#23232f; }
   *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
-  html,body{height:100%;overflow:hidden;overscroll-behavior:none;}
-  body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
-    background:var(--bg);color:var(--ink);display:flex;flex-direction:column;
-    max-width:620px;margin:0 auto;height:100dvh;height:100vh;transition:background .25s;}
+  html,body{height:100%;width:100%;overflow:hidden;position:fixed;overscroll-behavior:none;background:var(--bg);}
+
+  /* the app is pinned to the VISIBLE viewport via JS, so the keyboard never hides the input */
+  #app{position:fixed;top:0;left:0;right:0;margin:0 auto;max-width:620px;height:100dvh;height:100vh;
+    display:flex;flex-direction:column;background:var(--bg);overflow:hidden;
+    font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:var(--ink);transition:background .25s;}
 
   .header{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;
     background:var(--card);border-bottom:1px solid var(--line);flex-shrink:0;}
@@ -62,11 +64,13 @@
   .controls button{flex:1;padding:11px;border-radius:12px;border:1px solid var(--line);background:var(--bg);color:var(--ink);font-weight:600;font-size:14px;cursor:pointer;}
   .controls .next{color:var(--brand);border-color:var(--brand);}
   .controls .report{color:var(--accent);border-color:var(--accent);}
-  .composer{display:flex;gap:8px;padding:8px 10px calc(8px + env(safe-area-inset-bottom));background:var(--card);border-top:1px solid var(--line);align-items:center;flex-shrink:0;}
+  .composer{display:flex;gap:8px;padding:8px 10px;background:var(--card);border-top:1px solid var(--line);align-items:center;flex-shrink:0;}
   .composer input{flex:1;border:1px solid var(--line);background:var(--bg);color:var(--ink);
     border-radius:999px;padding:12px 16px;font-size:16px;outline:none;}
   .composer input:focus{border-color:var(--brand);}
   .send{background:var(--brand);color:#fff;border:none;width:46px;height:46px;border-radius:50%;font-size:18px;cursor:pointer;flex-shrink:0;}
+  /* breathing room above the phone home-bar only when keyboard is closed */
+  #app:not(.kb) .composer{padding-bottom:calc(8px + env(safe-area-inset-bottom));}
 
   .toast{position:fixed;bottom:90px;left:50%;transform:translateX(-50%);background:var(--ink);color:var(--bg);
     padding:10px 18px;border-radius:999px;font-size:13px;opacity:0;transition:.25s;z-index:60;pointer-events:none;}
@@ -74,44 +78,46 @@
 </style>
 </head>
 <body>
-  <div class="header">
-    <div class="header-left">
-      <button class="icon-btn" id="theme">🌙</button>
-      <button class="icon-btn" id="music">🎵</button>
-    </div>
-    <div class="brand">chtkay</div>
-    <div class="online"><span class="dot"></span><span id="onlineCount">—</span></div>
-  </div>
-
-  <div class="ad" id="adStrip"><small>SPONSORED</small><span id="adBody">Local businesses of Duhok</span></div>
-
-  <!-- START -->
-  <div class="screen start" id="startScreen">
-    <h1>Talk to someone new</h1>
-    <p>Anonymous 1-on-1 chat. No names, no history. Match with a stranger and say what's up.</p>
-    <div>
-      <div style="font-size:13px;color:var(--muted);margin-bottom:8px">Match with</div>
-      <div class="choices" id="modeChoices">
-        <button class="chip on" data-mode="global">🌍 Anyone</button>
-        <button class="chip" data-mode="local">📍 Nearby</button>
+  <div id="app">
+    <div class="header">
+      <div class="header-left">
+        <button class="icon-btn" id="theme">🌙</button>
+        <button class="icon-btn" id="music">🎵</button>
       </div>
+      <div class="brand">chtkay</div>
+      <div class="online"><span class="dot"></span><span id="onlineCount">—</span></div>
     </div>
-    <button class="cta" id="startBtn">Start chatting</button>
-    <p class="safety">By tapping Start you confirm you're 18+ and agree to be respectful. Never share personal info. Report anything that crosses a line.</p>
-  </div>
 
-  <!-- CHAT -->
-  <div class="screen hidden" id="chatScreen">
-    <div class="status" id="status">Connecting…</div>
-    <div class="messages" id="messages"></div>
-    <div class="controls">
-      <button class="next" id="nextBtn">🔁 Next</button>
-      <button class="report" id="reportBtn">🚩 Report</button>
-      <button id="exitBtn">🚪 Exit</button>
+    <div class="ad" id="adStrip"><small>SPONSORED</small><span id="adBody">Local businesses of Duhok</span></div>
+
+    <!-- START -->
+    <div class="screen start" id="startScreen">
+      <h1>Talk to someone new</h1>
+      <p>Anonymous 1-on-1 chat. No names, no history. Match with a stranger and say what's up.</p>
+      <div>
+        <div style="font-size:13px;color:var(--muted);margin-bottom:8px">Match with</div>
+        <div class="choices" id="modeChoices">
+          <button class="chip on" data-mode="global">🌍 Anyone</button>
+          <button class="chip" data-mode="local">📍 Nearby</button>
+        </div>
+      </div>
+      <button class="cta" id="startBtn">Start chatting</button>
+      <p class="safety">By tapping Start you confirm you're 18+ and agree to be respectful. Never share personal info. Report anything that crosses a line.</p>
     </div>
-    <div class="composer">
-      <input id="input" placeholder="Type a message…" autocomplete="off" maxlength="500" enterkeyhint="send" />
-      <button class="send" id="sendBtn">➤</button>
+
+    <!-- CHAT -->
+    <div class="screen hidden" id="chatScreen">
+      <div class="status" id="status">Connecting…</div>
+      <div class="messages" id="messages"></div>
+      <div class="controls">
+        <button class="next" id="nextBtn">🔁 Next</button>
+        <button class="report" id="reportBtn">🚩 Report</button>
+        <button id="exitBtn">🚪 Exit</button>
+      </div>
+      <div class="composer">
+        <input id="input" placeholder="Type a message…" autocomplete="off" maxlength="500" enterkeyhint="send" />
+        <button class="send" id="sendBtn">➤</button>
+      </div>
     </div>
   </div>
 
@@ -127,28 +133,33 @@
     ];
 
     const $ = id => document.getElementById(id);
+    const app = $('app');
     const socket = io();
     let mode = 'global', connected = false;
     function ls(k,v){ try{ if(v===undefined) return localStorage.getItem(k); localStorage.setItem(k,v);}catch(_){} }
-
-    // ---------- mobile keyboard / viewport fix ----------
-    function fitViewport(){
-      const vv = window.visualViewport;
-      if(vv) document.body.style.height = vv.height + 'px';
-    }
     function scrollMsgs(){ const m=$('messages'); m.scrollTop = m.scrollHeight; }
-    if(window.visualViewport){
-      visualViewport.addEventListener('resize', ()=>{ fitViewport(); scrollMsgs(); });
-      visualViewport.addEventListener('scroll', fitViewport);
+
+    // ---------- keyboard-safe viewport: pin #app to the VISIBLE area ----------
+    const vv = window.visualViewport;
+    function fit(){
+      if(!vv) return;
+      app.style.height = vv.height + 'px';
+      app.style.transform = 'translateY(' + vv.offsetTop + 'px)';
+      const kbOpen = (window.innerHeight - vv.height) > 120;
+      app.classList.toggle('kb', kbOpen);
     }
-    window.addEventListener('orientationchange', ()=> setTimeout(fitViewport,300));
-    fitViewport();
+    if(vv){
+      vv.addEventListener('resize', ()=>{ fit(); scrollMsgs(); });
+      vv.addEventListener('scroll', fit);
+    }
+    window.addEventListener('orientationchange', ()=> setTimeout(fit,300));
+    fit();
 
     // theme
-    if (ls('dark') === '1') document.body.classList.add('dark');
-    $('theme').textContent = document.body.classList.contains('dark') ? '☀️' : '🌙';
-    $('theme').onclick = () => { document.body.classList.toggle('dark');
-      const d=document.body.classList.contains('dark'); $('theme').textContent=d?'☀️':'🌙'; ls('dark',d?'1':'0'); };
+    if (ls('dark') === '1') document.body.classList.add('dark'), app.classList.add('dark');
+    function applyTheme(){ const d=document.body.classList.contains('dark'); app.classList.toggle('dark',d); $('theme').textContent=d?'☀️':'🌙'; }
+    applyTheme();
+    $('theme').onclick = () => { document.body.classList.toggle('dark'); const d=document.body.classList.contains('dark'); ls('dark',d?'1':'0'); applyTheme(); };
 
     // mode chips
     $('modeChoices').onclick = e => { const b=e.target.closest('.chip'); if(!b)return;
@@ -158,24 +169,20 @@
     let actx=null, master=null, lp=null, musicTimer=null, musicPlaying=false, barIndex=0;
     let musicMuted = ls('music')==='off';
     const PROG=[[146.83,174.61,220,261.63],[196,246.94,293.66,349.23],[130.81,164.81,196,246.94],[220,261.63,329.63,392]];
-    function ensureAudio(){
-      if(actx) return; const AC=window.AudioContext||window.webkitAudioContext; if(!AC) return;
+    function ensureAudio(){ if(actx) return; const AC=window.AudioContext||window.webkitAudioContext; if(!AC) return;
       actx=new AC(); master=actx.createGain(); master.gain.value=0; master.connect(actx.destination);
       lp=actx.createBiquadFilter(); lp.type='lowpass'; lp.frequency.value=1500; lp.connect(master);
       const buf=actx.createBuffer(1,actx.sampleRate*2,actx.sampleRate); const d=buf.getChannelData(0);
       for(let i=0;i<d.length;i++) d[i]=(Math.random()*2-1)*0.05;
-      const n=actx.createBufferSource(); n.buffer=buf; n.loop=true;
-      const nf=actx.createBiquadFilter(); nf.type='lowpass'; nf.frequency.value=850;
-      const ng=actx.createGain(); ng.gain.value=0.5; n.connect(nf); nf.connect(ng); ng.connect(lp); n.start();
-    }
+      const n=actx.createBufferSource(); n.buffer=buf; n.loop=true; const nf=actx.createBiquadFilter(); nf.type='lowpass'; nf.frequency.value=850;
+      const ng=actx.createGain(); ng.gain.value=0.5; n.connect(nf); nf.connect(ng); ng.connect(lp); n.start(); }
     function tone(f,t,dur,vol,type){ const o=actx.createOscillator(); o.type=type||'triangle'; o.frequency.value=f; o.detune.value=Math.random()*8-4;
       const g=actx.createGain(); g.gain.setValueAtTime(0,t); g.gain.linearRampToValueAtTime(vol,t+0.25); g.gain.exponentialRampToValueAtTime(0.0008,t+dur);
       o.connect(g); g.connect(lp); o.start(t); o.stop(t+dur+0.1); }
     function kick(t){ const o=actx.createOscillator(); o.type='sine'; o.frequency.setValueAtTime(120,t); o.frequency.exponentialRampToValueAtTime(45,t+0.14);
       const g=actx.createGain(); g.gain.setValueAtTime(0.45,t); g.gain.exponentialRampToValueAtTime(0.001,t+0.18); o.connect(g); g.connect(master); o.start(t); o.stop(t+0.2); }
     function scheduleBar(){ if(!musicPlaying) return; const t=actx.currentTime+0.05, bar=3.4, c=PROG[barIndex%PROG.length]; barIndex++;
-      c.forEach((f,i)=>tone(f,t+i*0.04,bar*0.95,0.11,'triangle')); tone(c[0]/2,t,bar*0.9,0.16,'sine'); kick(t); kick(t+bar/2);
-      musicTimer=setTimeout(scheduleBar,bar*1000); }
+      c.forEach((f,i)=>tone(f,t+i*0.04,bar*0.95,0.11,'triangle')); tone(c[0]/2,t,bar*0.9,0.16,'sine'); kick(t); kick(t+bar/2); musicTimer=setTimeout(scheduleBar,bar*1000); }
     function startLofi(){ if(musicMuted||musicPlaying) return; ensureAudio(); if(!actx) return; if(actx.state==='suspended') actx.resume();
       musicPlaying=true; barIndex=0; master.gain.cancelScheduledValues(actx.currentTime); master.gain.setValueAtTime(Math.max(0.0001,master.gain.value),actx.currentTime);
       master.gain.linearRampToValueAtTime(0.16,actx.currentTime+1.6); scheduleBar(); musicBtn(); }
@@ -201,7 +208,7 @@
       } else join(null);
     };
 
-    function showChat(){ $('startScreen').classList.add('hidden'); $('chatScreen').classList.remove('hidden'); setStatus('Looking for someone…'); startLofi(); }
+    function showChat(){ $('startScreen').classList.add('hidden'); $('chatScreen').classList.remove('hidden'); setStatus('Looking for someone…'); startLofi(); setTimeout(scrollMsgs,50); }
     function showStart(){ $('chatScreen').classList.add('hidden'); $('startScreen').classList.remove('hidden'); $('messages').innerHTML=''; connected=false; stopLofi(); }
     function setStatus(t){ $('status').textContent=t; }
     function addMsg(text,cls){ const d=document.createElement('div'); d.className='msg '+cls; d.textContent=text; $('messages').appendChild(d); scrollMsgs(); }
@@ -210,11 +217,12 @@
     function send(){ const v=$('input').value.trim(); if(!v||!connected)return; socket.emit('chat message',v); $('input').value=''; }
     $('sendBtn').onclick=send;
     $('input').addEventListener('keydown',e=>{ if(e.key==='Enter'){ e.preventDefault(); send(); }});
-    $('input').addEventListener('focus',()=> setTimeout(()=>{ fitViewport(); scrollMsgs(); },300));
+    $('input').addEventListener('focus',()=> setTimeout(()=>{ fit(); scrollMsgs(); },300));
+    $('input').addEventListener('blur',()=> setTimeout(fit,100));
 
     $('nextBtn').onclick=()=>{ addMsg('Finding someone new…','sys'); connected=false; socket.emit('find new partner'); };
     $('reportBtn').onclick=()=>{ if(connected) socket.emit('report'); };
-    $('exitBtn').onclick=()=>{ socket.emit('leave chat'); showStart(); $('input').blur(); };
+    $('exitBtn').onclick=()=>{ socket.emit('leave chat'); $('input').blur(); showStart(); };
 
     socket.on('online', n => $('onlineCount').textContent=n);
     socket.on('searching', d => { setStatus(d.message); connected=false; });
