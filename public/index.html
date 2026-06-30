@@ -75,6 +75,8 @@
   .toast{position:fixed;bottom:90px;left:50%;transform:translateX(-50%);background:var(--ink);color:var(--bg);
     padding:10px 18px;border-radius:999px;font-size:13px;opacity:0;transition:.25s;z-index:60;pointer-events:none;}
   .toast.show{opacity:1;}
+  .controls .guess{flex:0 0 auto;color:var(--muted);border-color:var(--line);padding:11px 12px;}
+  .msg.typing{font-style:italic;color:var(--muted);background:var(--them);opacity:.8;}
 </style>
 </head>
 <body>
@@ -102,7 +104,7 @@
         </div>
       </div>
       <button class="cta" id="startBtn">Start chatting</button>
-      <p class="safety">By tapping Start you confirm you're 18+ and agree to be respectful. Never share personal info. Report anything that crosses a line.</p>
+      <p class="safety">By tapping Start you confirm you're 18+ and agree to be respectful. Never share personal info. Report anything that crosses a line.<br><br>Some strangers here may be AI — can you tell? Chats may be used to improve our Kurdish AI.</p>
     </div>
 
     <!-- CHAT -->
@@ -113,6 +115,7 @@
         <button class="next" id="nextBtn">🔁 Next</button>
         <button class="report" id="reportBtn">🚩 Report</button>
         <button id="exitBtn">🚪 Exit</button>
+        <button class="guess" id="guessBtn" title="Is this a bot?">🤖?</button>
       </div>
       <div class="composer">
         <input id="input" placeholder="Type a message…" autocomplete="off" maxlength="500" enterkeyhint="send" />
@@ -238,13 +241,21 @@
     $('nextBtn').onclick=()=>{ addMsg('Finding someone new…','sys'); connected=false; socket.emit('find new partner'); };
     $('reportBtn').onclick=()=>{ if(connected) socket.emit('report'); };
     $('exitBtn').onclick=()=>{ socket.emit('leave chat'); $('input').blur(); showStart(); };
+    $('guessBtn').onclick=()=>{ if(connected) socket.emit('guess bot'); };
+
+    // typing indicator (so AI replies never appear instantly)
+    let typingEl=null, typingT=null;
+    function showTyping(){ hideTyping(); typingEl=document.createElement('div'); typingEl.className='msg them typing'; typingEl.textContent='typing…'; $('messages').appendChild(typingEl); scrollMsgs(); clearTimeout(typingT); typingT=setTimeout(hideTyping,7000); }
+    function hideTyping(){ if(typingEl){ typingEl.remove(); typingEl=null; } clearTimeout(typingT); }
 
     socket.on('online', n => $('onlineCount').textContent=n);
-    socket.on('searching', d => { setStatus(d.message); connected=false; });
-    socket.on('matched', d => { connected=true; setStatus(`Chatting with ${d.partnerName}`); addMsg(d.message,'sys'); });
-    socket.on('chat message', d => addMsg(d.message,'them'));
+    socket.on('searching', d => { setStatus(d.message); connected=false; hideTyping(); });
+    socket.on('matched', d => { connected=true; setStatus(`Chatting with ${d.partnerName}`); addMsg(d.message,'sys'); hideTyping(); });
+    socket.on('partner typing', showTyping);
+    socket.on('chat message', d => { hideTyping(); addMsg(d.message,'them'); });
     socket.on('own message', d => addMsg(d.message,'me'));
-    socket.on('partner left', () => { connected=false; setStatus('They left. Tap Next for someone new.'); addMsg('Stranger disconnected.','sys'); });
+    socket.on('partner left', () => { connected=false; setStatus('They left. Tap Next for someone new.'); addMsg('Stranger disconnected.','sys'); hideTyping(); });
+    socket.on('reveal', d => toast(d.wasBot ? '🤖 That was AI — nice catch' : '🧑 That was a real person'));
     socket.on('notice', d => toast(d.message));
     socket.on('blocked', d => { toast(d.message); showStart(); });
   </script>
