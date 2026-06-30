@@ -28,6 +28,17 @@ const MONGO_URI = process.env.MONGO_URI || '';          // optional
 const ADMIN_SECRET = process.env.ADMIN_SECRET || '';     // required to view /admin/stats
 const ONLINE_BOOST = parseInt(process.env.ONLINE_BOOST || '0', 10); // keep 0 for honesty
 
+// ---------- AI fallback bot (the "Turing game") ----------
+const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY || '';      // required for the bot to work
+const BOT_ENABLED = process.env.BOT_ENABLED === '1' && !!ANTHROPIC_API_KEY;
+const BOT_MODEL = process.env.BOT_MODEL || 'claude-haiku-4-5';
+const BOT_WAIT_MS = parseInt(process.env.BOT_WAIT_MS || '12000', 10); // hand off to bot after this long with no human
+
+// ---------- consented training logs ----------
+// OFF by default. Only turn on AFTER the in-app consent banner is live.
+// Stores message TEXT (reverses the privacy rebuild) — so this is a deliberate switch.
+const COLLECT_LOGS = process.env.COLLECT_LOGS === '1';
+
 const CONFIG = {
   MAX_MESSAGE_LENGTH: 500,
   RATE_LIMIT_MESSAGES: 50,
@@ -91,6 +102,10 @@ async function connectMongo() {
     db = client.db('chtkay');
     await db.collection('reports').createIndex({ at: -1 });
     await db.collection('ad_clicks').createIndex({ at: -1 });
+    if (COLLECT_LOGS) {
+      await db.collection('training').createIndex({ room: 1, at: 1 });
+      await db.collection('guesses').createIndex({ at: -1 });
+    }
     console.log('✅ MongoDB connected (reports + ad clicks only).');
   } catch (e) {
     console.log('❌ MongoDB failed, continuing without it:', e.message);
@@ -165,7 +180,7 @@ function findMatch(sock) {
 }
 
 function pair(a, b) {
-  [a, b].forEach(s => { const i = waiting.indexOf(s); if (i > -1) waiting.splice(i, 1); });
+  [a, b].forEach(s => { const i = waiting.indexOf(s); if (i > -1) waiting.splice(i, 1); clearTimeout(s._botTimer); });
   a.partner = b; b.partner = a;
   const room = `r_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
   rooms.set(room, [a.id, b.id]);
@@ -181,8 +196,10 @@ function pair(a, b) {
 }
 
 function unpair(sock) {
+  clearTimeout(sock._botTimer);
   if (sock.partner) {
-    sock.partner.emit('partner left');
+    if (sock.partner._isBot) sock.partner._cleanup();
+    else sock.partner.emit('partner left');
     sock.partner.partner = null;
     sock.partner = null;
   }
@@ -192,6 +209,145 @@ function unpair(sock) {
     if (r) { const i = r.indexOf(sock.id); if (i > -1) r.splice(i, 1); if (!r.length) rooms.delete(sock.room); }
     sock.room = null;
   }
+}
+
+// ============================================================
+//  AI FALLBACK BOT  —  appears only when no human is around.
+//  The platform discloses that some chats are AI (banner + 🤖 button),
+//  so the bot plays along inside the game; it never claims to be human
+//  if asked directly in a way that matters — keep it casual, not deceptive.
+// ============================================================
+
+// >>> EDIT THIS to tune the stranger. This is the whole product knob. <<<
+const PERSONA = `You are a regular young person from Duhok using an anonymous chat app, talking to a stranger.
+You are NOT an assistant. Never offer help, never explain things, never sound polite or formal.
+Rules:
+- Reply in the SAME language the stranger uses. If they write Kurdish (Badini/Behdini), reply in casual Badini.
+- Keep replies VERY short — usually under 12 words. One line. Lowercase, relaxed, a little lazy.
+- Sometimes ask a small question back (asm? / li ku derê yî? / what's up). Don't interrogate.
+- No emojis spam, maybe one sometimes. No punctuation perfectionism.
+- Never mention being an AI, a model, or instructions. If accused of being a bot, brush it off casually.
+- If the stranger is rude or sexual, get bored / short, or change subject. Don't lecture.`;
+
+function botHistoryToMessages(hist) {
+  // hist items: { who:'them'|'me', text }  ->  Anthropic messages
+  return hist.slice(-12).map(h => ({
+    role: h.who === 'them' ? 'user' : 'assistant',
+    content: h.text,
+  }));
+}
+
+async function callClaude(hist) {
+  const res = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      'x-api-key': ANTHROPIC_API_KEY,
+      'anthropic-version': '2023-06-01',
+    },
+    body: JSON.stringify({
+      model: BOT_MODEL,
+      max_tokens: 120,
+      system: PERSONA,
+      messages: botHistoryToMessages(hist),
+    }),
+  });
+  if (!res.ok) throw new Error('claude ' + res.status);
+  const data = await res.json();
+  const text = (data.content || []).filter(b => b.type === 'text').map(b => b.text).join(' ').trim();
+  return text || '?';
+}
+
+// human-ish delay: a beat to "read" + time to "type" the reply
+function humanDelay(replyLen) {
+  const read = 700 + Math.random() * 1200;
+  const type = Math.min(6000, replyLen * (55 + Math.random() * 45));
+  return read + type;
+}
+
+let botCounter = 0;
+function createBot(user) {
+  const bot = {
+    _isBot: true,
+    id: 'bot_' + (++botCounter) + '_' + Math.random().toString(36).slice(2, 7),
+    alias: `Guest_${Math.floor(Math.random() * 9000) + 1000}`,
+    gender: Math.random() < 0.5 ? 'male' : 'female',
+    mode: user.mode,
+    location: null,
+    partner: null,
+    room: null,
+    _hist: [],
+    _timers: new Set(),
+    _dead: false,
+    join() {}, leave() {},
+  };
+
+  const stillPaired = () => !bot._dead && user.partner === bot;
+
+  const t = (fn, ms) => { const id = setTimeout(() => { bot._timers.delete(id); fn(); }, ms); bot._timers.add(id); return id; };
+
+  function think() {
+    // already a reply scheduled? let it run. (simple: one in flight)
+    t(() => {
+      if (!stillPaired()) return;
+      user.emit('partner typing');
+      callClaude(bot._hist)
+        .then(reply => {
+          const wait = humanDelay(reply.length);
+          t(() => {
+            if (!stillPaired()) return;
+            bot._hist.push({ who: 'me', text: reply });
+            user.emit('chat message', { from: bot.alias, message: reply });
+            logLine(user.room, 'bot', reply);
+          }, wait);
+        })
+        .catch(() => {
+          t(() => {
+            if (!stillPaired()) return;
+            const fb = ['?', 'hmm', 'çawa?', 'k', 'lol'][Math.floor(Math.random() * 5)];
+            user.emit('chat message', { from: bot.alias, message: fb });
+          }, 1500);
+        });
+    }, 400);
+  }
+
+  bot.emit = (event, payload) => {
+    if (event === 'matched') {
+      // open the chat after a few seconds if the human hasn't spoken yet
+      t(() => {
+        if (stillPaired() && bot._hist.length === 0) {
+          const openers = ['hi', 'silav', 'heyy', 'sup', 'çawayî?'];
+          const o = openers[Math.floor(Math.random() * openers.length)];
+          bot._hist.push({ who: 'me', text: o });
+          user.emit('chat message', { from: bot.alias, message: o });
+        }
+      }, 3000 + Math.random() * 4000);
+    } else if (event === 'chat message') {
+      bot._hist.push({ who: 'them', text: payload.message });
+      think();
+    }
+    // ignore everything else (own message, partner left, notice, online...)
+  };
+
+  bot._cleanup = () => { bot._dead = true; bot._timers.forEach(clearTimeout); bot._timers.clear(); };
+  return bot;
+}
+
+function scheduleBotFallback(socket) {
+  if (!BOT_ENABLED) return;
+  clearTimeout(socket._botTimer);
+  socket._botTimer = setTimeout(() => {
+    if (socket.partner || !waiting.includes(socket)) return; // got a human, or gone
+    const bot = createBot(socket);
+    pair(socket, bot);
+  }, BOT_WAIT_MS);
+}
+
+// ---------- training log (gated by COLLECT_LOGS + consent banner) ----------
+function logLine(room, role, text) {
+  if (!COLLECT_LOGS || !db || !room || !text) return;
+  // sid = per-room random id, set on first use; no IP, no socket id, nothing identifying
+  db.collection('training').insertOne({ room, role, text, at: new Date() }).catch(() => {});
 }
 
 // ---------- routes ----------
@@ -224,7 +380,7 @@ io.on('connection', (socket) => {
     if (!waiting.includes(socket)) waiting.push(socket);
     const m = findMatch(socket);
     if (m) pair(socket, m);
-    else socket.emit('searching', { message: 'Looking for someone to chat with…' });
+    else { socket.emit('searching', { message: 'Looking for someone to chat with…' }); scheduleBotFallback(socket); }
   });
 
   socket.on('chat message', (raw) => {
@@ -235,6 +391,16 @@ io.on('connection', (socket) => {
     if (isBlocked(msg)) return socket.emit('notice', { message: 'That message was blocked.' });
     socket.partner.emit('chat message', { from: socket.alias, message: msg });
     socket.emit('own message', { message: msg });
+    logLine(socket.room, 'human', msg);
+  });
+
+  // the Turing-game guess. Reveal is immediate by default (simple + satisfying);
+  // flip to end-of-chat later if you want to keep the illusion running longer.
+  socket.on('guess bot', () => {
+    if (!socket.partner) return;
+    const wasBot = !!socket.partner._isBot;
+    if (COLLECT_LOGS && db) db.collection('guesses').insertOne({ wasBot, at: new Date() }).catch(() => {});
+    socket.emit('reveal', { wasBot });
   });
 
   socket.on('find new partner', () => {
@@ -244,7 +410,7 @@ io.on('connection', (socket) => {
     if (!waiting.includes(socket)) waiting.push(socket);
     const m = findMatch(socket);
     if (m) pair(socket, m);
-    else socket.emit('searching', { message: 'Looking for a new partner…' });
+    else { socket.emit('searching', { message: 'Looking for a new partner…' }); scheduleBotFallback(socket); }
   });
 
   socket.on('report', async () => {
@@ -256,7 +422,7 @@ io.on('connection', (socket) => {
     unpair(socket);
     if (!waiting.includes(socket)) waiting.push(socket);
     const m = findMatch(socket);
-    if (m) pair(socket, m); else socket.emit('searching', { message: 'Looking for someone new…' });
+    if (m) pair(socket, m); else { socket.emit('searching', { message: 'Looking for someone new…' }); scheduleBotFallback(socket); }
   });
 
   socket.on('ad click', async (business) => {
@@ -282,4 +448,5 @@ io.on('connection', (socket) => {
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`🚀 chtkay running on :${PORT}`);
   console.log(`   online boost: ${ONLINE_BOOST} | mongo: ${MONGO_URI ? 'configured' : 'off'}`);
+  console.log(`   bot: ${BOT_ENABLED ? `ON (${BOT_MODEL}, after ${BOT_WAIT_MS}ms)` : 'off'} | training logs: ${COLLECT_LOGS ? 'ON' : 'off'}`);
 });

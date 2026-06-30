@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>chtkay — anonymous chat</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover, interactive-widget=resizes-content" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="theme-color" content="#5b5bf0" />
+<style>
+  :root{
+    --bg:#f7f7fb; --card:#ffffff; --ink:#1b1b2b; --muted:#8a8aa0;
+    --line:#e9e9f1; --brand:#5b5bf0; --brand2:#8a5bf0; --accent:#ff5c7a;
+    --me:#5b5bf0; --them:#eef0f6;
+  }
+  body.dark{ --bg:#0d0d14; --card:#16161f; --ink:#f3f3f7; --muted:#9a9ab0;
+    --line:#262633; --them:#23232f; }
+  *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+  html,body{height:100%;width:100%;overflow:hidden;position:fixed;overscroll-behavior:none;background:var(--bg);}
+
+  /* the app is pinned to the VISIBLE viewport via JS, so the keyboard never hides the input */
+  #app{position:fixed;top:0;left:0;right:0;margin:0 auto;max-width:620px;height:100dvh;height:100vh;
+    display:flex;flex-direction:column;background:var(--bg);overflow:hidden;
+    font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:var(--ink);transition:background .25s;}
+
+  .header{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;
+    background:var(--card);border-bottom:1px solid var(--line);flex-shrink:0;}
+  .header-left{display:flex;align-items:center;gap:4px;flex:1;}
+  .brand{font-weight:800;font-size:22px;letter-spacing:-.5px;
+    background:linear-gradient(120deg,var(--brand),var(--brand2));-webkit-background-clip:text;background-clip:text;color:transparent;}
+  .online{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--muted);flex:1;justify-content:flex-end;}
+  .dot{width:8px;height:8px;border-radius:50%;background:#22c55e;box-shadow:0 0 0 0 rgba(34,197,94,.6);animation:pulse 2s infinite;}
+  @keyframes pulse{70%{box-shadow:0 0 0 7px rgba(34,197,94,0)}100%{box-shadow:0 0 0 0 rgba(34,197,94,0)}}
+  .icon-btn{background:none;border:none;color:var(--muted);font-size:20px;cursor:pointer;padding:6px;line-height:1;}
+
+  .ad{padding:9px 14px;background:linear-gradient(90deg,rgba(91,91,240,.08),rgba(138,91,240,.08));
+    border-bottom:1px solid var(--line);font-size:13px;text-align:center;flex-shrink:0;}
+  .ad small{display:block;font-size:9px;letter-spacing:1.5px;color:var(--muted);margin-bottom:2px;}
+  .ad a{color:var(--brand);text-decoration:none;font-weight:600;}
+
+  .screen{flex:1;display:flex;flex-direction:column;overflow:hidden;min-height:0;}
+  .hidden{display:none!important;}
+
+  .start{justify-content:center;align-items:center;text-align:center;padding:28px;gap:18px;overflow-y:auto;}
+  .start h1{font-size:30px;letter-spacing:-1px;}
+  .start p{color:var(--muted);max-width:340px;line-height:1.5;}
+  .choices{display:flex;gap:10px;flex-wrap:wrap;justify-content:center;}
+  .chip{border:1.5px solid var(--line);background:var(--card);color:var(--ink);
+    padding:12px 18px;border-radius:999px;font-size:15px;font-weight:600;cursor:pointer;transition:.15s;}
+  .chip.on{border-color:var(--brand);color:var(--brand);background:rgba(91,91,240,.08);}
+  .cta{margin-top:6px;background:linear-gradient(120deg,var(--brand),var(--brand2));color:#fff;border:none;
+    padding:16px 44px;border-radius:999px;font-size:17px;font-weight:700;cursor:pointer;box-shadow:0 8px 24px rgba(91,91,240,.35);}
+  .safety{font-size:12px;color:var(--muted);max-width:320px;line-height:1.5;}
+
+  .status{padding:8px 16px;text-align:center;font-size:13px;color:var(--muted);background:var(--card);border-bottom:1px solid var(--line);flex-shrink:0;}
+  .messages{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;
+    padding:14px;display:flex;flex-direction:column;gap:8px;min-height:0;}
+  .msg{max-width:80%;padding:10px 14px;border-radius:18px;font-size:15px;line-height:1.35;word-wrap:break-word;animation:pop .15s;}
+  @keyframes pop{from{transform:translateY(4px);opacity:0}}
+  .msg.them{align-self:flex-start;background:var(--them);border-bottom-left-radius:5px;}
+  .msg.me{align-self:flex-end;background:var(--me);color:#fff;border-bottom-right-radius:5px;}
+  .msg.sys{align-self:center;background:transparent;color:var(--muted);font-size:12px;text-align:center;}
+
+  .controls{display:flex;gap:8px;padding:8px 10px 6px;background:var(--card);flex-shrink:0;}
+  .controls button{flex:1;padding:11px;border-radius:12px;border:1px solid var(--line);background:var(--bg);color:var(--ink);font-weight:600;font-size:14px;cursor:pointer;}
+  .controls .next{color:var(--brand);border-color:var(--brand);}
+  .controls .report{color:var(--accent);border-color:var(--accent);}
+  .composer{display:flex;gap:8px;padding:8px 10px;background:var(--card);border-top:1px solid var(--line);align-items:center;flex-shrink:0;}
+  .composer input{flex:1;border:1px solid var(--line);background:var(--bg);color:var(--ink);
+    border-radius:999px;padding:12px 16px;font-size:16px;outline:none;}
+  .composer input:focus{border-color:var(--brand);}
+  .send{background:var(--brand);color:#fff;border:none;width:46px;height:46px;border-radius:50%;font-size:18px;cursor:pointer;flex-shrink:0;}
+  /* breathing room above the phone home-bar only when keyboard is closed */
+  #app:not(.kb) .composer{padding-bottom:calc(8px + env(safe-area-inset-bottom));}
+
+  .toast{position:fixed;bottom:90px;left:50%;transform:translateX(-50%);background:var(--ink);color:var(--bg);
+    padding:10px 18px;border-radius:999px;font-size:13px;opacity:0;transition:.25s;z-index:60;pointer-events:none;}
+  .toast.show{opacity:1;}
+  .controls .guess{flex:0 0 auto;color:var(--muted);border-color:var(--line);padding:11px 12px;}
+  .msg.typing{font-style:italic;color:var(--muted);background:var(--them);opacity:.8;}
+</style>
+</head>
+<body>
+  <div id="app">
+    <div class="header">
+      <div class="header-left">
+        <button class="icon-btn" id="theme">🌙</button>
+        <button class="icon-btn" id="music">🎵</button>
+      </div>
+      <div class="brand">chtkay</div>
+      <div class="online"><span class="dot"></span><span id="onlineCount">—</span></div>
+    </div>
+
+    <div class="ad" id="adStrip"><small>SPONSORED</small><span id="adBody">Local businesses of Duhok</span></div>
+
+    <!-- START -->
+    <div class="screen start" id="startScreen">
+      <h1>Talk to someone new</h1>
+      <p>Anonymous 1-on-1 chat. No names, no history. Match with a stranger and say what's up.</p>
+      <div>
+        <div style="font-size:13px;color:var(--muted);margin-bottom:8px">Match with</div>
+        <div class="choices" id="modeChoices">
+          <button class="chip on" data-mode="global">🌍 Anyone</button>
+          <button class="chip" data-mode="local">📍 Nearby</button>
+        </div>
+      </div>
+      <button class="cta" id="startBtn">Start chatting</button>
+      <p class="safety">By tapping Start you confirm you're 18+ and agree to be respectful. Never share personal info. Report anything that crosses a line.<br><br>Some strangers here may be AI — can you tell? Chats may be used to improve our Kurdish AI.</p>
+    </div>
+
+    <!-- CHAT -->
+    <div class="screen hidden" id="chatScreen">
+      <div class="status" id="status">Connecting…</div>
+      <div class="messages" id="messages"></div>
+      <div class="controls">
+        <button class="next" id="nextBtn">🔁 Next</button>
+        <button class="report" id="reportBtn">🚩 Report</button>
+        <button id="exitBtn">🚪 Exit</button>
+        <button class="guess" id="guessBtn" title="Is this a bot?">🤖?</button>
+      </div>
+      <div class="composer">
+        <input id="input" placeholder="Type a message…" autocomplete="off" maxlength="500" enterkeyhint="send" />
+        <button class="send" id="sendBtn">➤</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+  <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+  <script>
+    const ADS = [
+      { t:"☕ Cafe Leggero — best coffee in town", h:"https://www.instagram.com/leggero_cafe_duhok", b:"leggero" },
+      { t:"💉 Dr. Dalia Beauty Clinic — filler & botox", h:"https://www.instagram.com/dr.daliamustaf__and_dr.khsho", b:"dalia" },
+      { t:"🎓 CGT Institute — learn English & German", h:"https://www.instagram.com/cgt_institute_duhok", b:"cgt" },
+      { t:"💅 Shangull83 Nails — luxury nail salon", h:"https://www.instagram.com/83.shangull.nails", b:"nails" },
+    ];
+
+    const $ = id => document.getElementById(id);
+    const app = $('app');
+    const socket = io();
+    let mode = 'global', connected = false;
+    function ls(k,v){ try{ if(v===undefined) return localStorage.getItem(k); localStorage.setItem(k,v);}catch(_){} }
+    function scrollMsgs(){ const m=$('messages'); m.scrollTop = m.scrollHeight; }
+
+    // ---------- keyboard-safe viewport: pin #app to the VISIBLE area ----------
+    const vv = window.visualViewport;
+    function fit(){
+      if(!vv) return;
+      app.style.height = vv.height + 'px';
+      app.style.transform = 'translateY(' + vv.offsetTop + 'px)';
+      const kbOpen = (window.innerHeight - vv.height) > 120;
+      app.classList.toggle('kb', kbOpen);
+    }
+    if(vv){
+      vv.addEventListener('resize', ()=>{ fit(); scrollMsgs(); });
+      vv.addEventListener('scroll', fit);
+    }
+    window.addEventListener('orientationchange', ()=> setTimeout(fit,300));
+    fit();
+
+    // theme
+    if (ls('dark') === '1') document.body.classList.add('dark'), app.classList.add('dark');
+    function applyTheme(){ const d=document.body.classList.contains('dark'); app.classList.toggle('dark',d); $('theme').textContent=d?'☀️':'🌙'; }
+    applyTheme();
+    $('theme').onclick = () => { document.body.classList.toggle('dark'); const d=document.body.classList.contains('dark'); ls('dark',d?'1':'0'); applyTheme(); };
+
+    // mode chips
+    $('modeChoices').onclick = e => { const b=e.target.closest('.chip'); if(!b)return;
+      [...$('modeChoices').children].forEach(c=>c.classList.remove('on')); b.classList.add('on'); mode=b.dataset.mode; };
+
+    // ---------- generated lofi music ----------
+    let actx=null, master=null, lp=null, musicTimer=null, musicPlaying=false, barIndex=0;
+    let musicMuted = ls('music')==='off';
+    const PROG=[[146.83,174.61,220,261.63],[196,246.94,293.66,349.23],[130.81,164.81,196,246.94],[220,261.63,329.63,392]];
+    function ensureAudio(){ if(actx) return; const AC=window.AudioContext||window.webkitAudioContext; if(!AC) return;
+      actx=new AC(); master=actx.createGain(); master.gain.value=0; master.connect(actx.destination);
+      lp=actx.createBiquadFilter(); lp.type='lowpass'; lp.frequency.value=1500; lp.connect(master);
+      const buf=actx.createBuffer(1,actx.sampleRate*2,actx.sampleRate); const d=buf.getChannelData(0);
+      for(let i=0;i<d.length;i++) d[i]=(Math.random()*2-1)*0.05;
+      const n=actx.createBufferSource(); n.buffer=buf; n.loop=true; const nf=actx.createBiquadFilter(); nf.type='lowpass'; nf.frequency.value=850;
+      const ng=actx.createGain(); ng.gain.value=0.5; n.connect(nf); nf.connect(ng); ng.connect(lp); n.start(); }
+    function tone(f,t,dur,vol,type){ const o=actx.createOscillator(); o.type=type||'triangle'; o.frequency.value=f; o.detune.value=Math.random()*8-4;
+      const g=actx.createGain(); g.gain.setValueAtTime(0,t); g.gain.linearRampToValueAtTime(vol,t+0.25); g.gain.exponentialRampToValueAtTime(0.0008,t+dur);
+      o.connect(g); g.connect(lp); o.start(t); o.stop(t+dur+0.1); }
+    function kick(t){ const o=actx.createOscillator(); o.type='sine'; o.frequency.setValueAtTime(120,t); o.frequency.exponentialRampToValueAtTime(45,t+0.14);
+      const g=actx.createGain(); g.gain.setValueAtTime(0.45,t); g.gain.exponentialRampToValueAtTime(0.001,t+0.18); o.connect(g); g.connect(master); o.start(t); o.stop(t+0.2); }
+    function scheduleBar(){ if(!musicPlaying) return; const t=actx.currentTime+0.05, bar=3.4, c=PROG[barIndex%PROG.length]; barIndex++;
+      c.forEach((f,i)=>tone(f,t+i*0.04,bar*0.95,0.11,'triangle')); tone(c[0]/2,t,bar*0.9,0.16,'sine'); kick(t); kick(t+bar/2); musicTimer=setTimeout(scheduleBar,bar*1000); }
+    function startLofi(){ if(musicMuted||musicPlaying) return; ensureAudio(); if(!actx) return; if(actx.state==='suspended') actx.resume();
+      musicPlaying=true; barIndex=0; master.gain.cancelScheduledValues(actx.currentTime); master.gain.setValueAtTime(Math.max(0.0001,master.gain.value),actx.currentTime);
+      master.gain.linearRampToValueAtTime(0.16,actx.currentTime+1.6); scheduleBar(); musicBtn(); }
+    function stopLofi(){ musicPlaying=false; clearTimeout(musicTimer); if(actx){ master.gain.cancelScheduledValues(actx.currentTime);
+      master.gain.setValueAtTime(master.gain.value,actx.currentTime); master.gain.linearRampToValueAtTime(0,actx.currentTime+0.8);} musicBtn(); }
+    function musicBtn(){ $('music').textContent=musicMuted?'🔇':'🎵'; $('music').style.opacity=musicPlaying?1:.55; }
+    $('music').onclick=()=>{ musicMuted=!musicMuted; ls('music',musicMuted?'off':'on');
+      if(musicMuted) stopLofi(); else if(!$('chatScreen').classList.contains('hidden')) startLofi(); musicBtn(); };
+    musicBtn();
+
+    // unlock audio on first touch (mobile browsers block audio until a gesture)
+    const silentEl = (function(){ try{
+      const sr=8000, n=(sr*0.4)|0, buf=new ArrayBuffer(44+n*2), dv=new DataView(buf);
+      const w=(o,s)=>{ for(let i=0;i<s.length;i++) dv.setUint8(o+i,s.charCodeAt(i)); };
+      w(0,'RIFF'); dv.setUint32(4,36+n*2,true); w(8,'WAVE'); w(12,'fmt '); dv.setUint32(16,16,true);
+      dv.setUint16(20,1,true); dv.setUint16(22,1,true); dv.setUint32(24,sr,true); dv.setUint32(28,sr*2,true);
+      dv.setUint16(32,2,true); dv.setUint16(34,16,true); w(36,'data'); dv.setUint32(40,n*2,true);
+      const a=new Audio(URL.createObjectURL(new Blob([buf],{type:'audio/wav'}))); a.loop=true; a.volume=0; a.setAttribute('playsinline',''); return a;
+    }catch(_){ return null; } })();
+    let audioUnlocked=false;
+    function unlockAudio(){ if(audioUnlocked) return; ensureAudio();
+      if(actx && actx.state==='suspended') actx.resume();
+      if(silentEl) silentEl.play().catch(()=>{}); audioUnlocked=true; }
+    ['pointerdown','touchend','click'].forEach(ev => document.addEventListener(ev, unlockAudio, {passive:true}));
+
+    // ads
+    function rotateAd(){ const a=ADS[Math.floor(Math.random()*ADS.length)];
+      $('adBody').innerHTML=`<a href="${a.h}" target="_blank" rel="noopener" onclick="socket.emit('ad click','${a.b}')">${a.t}</a>`; }
+    rotateAd(); setInterval(rotateAd,9000);
+
+    // start (tapping Start = age + rules consent)
+    $('startBtn').onclick = () => {
+      const join = loc => socket.emit('join chat',{ ageConfirmed:true, mode, location:loc });
+      showChat();
+      if(mode==='local' && navigator.geolocation){
+        setStatus('Getting your area…');
+        navigator.geolocation.getCurrentPosition(p=>join({lat:p.coords.latitude,lon:p.coords.longitude}), ()=>join(null), {timeout:6000});
+      } else join(null);
+    };
+
+    function showChat(){ $('startScreen').classList.add('hidden'); $('chatScreen').classList.remove('hidden'); setStatus('Looking for someone…'); startLofi(); setTimeout(scrollMsgs,50); }
+    function showStart(){ $('chatScreen').classList.add('hidden'); $('startScreen').classList.remove('hidden'); $('messages').innerHTML=''; connected=false; stopLofi(); }
+    function setStatus(t){ $('status').textContent=t; }
+    function addMsg(text,cls){ const d=document.createElement('div'); d.className='msg '+cls; d.textContent=text; $('messages').appendChild(d); scrollMsgs(); }
+    function toast(t){ const el=$('toast'); el.textContent=t; el.classList.add('show'); clearTimeout(el._t); el._t=setTimeout(()=>el.classList.remove('show'),2600); }
+
+    function send(){ const v=$('input').value.trim(); if(!v||!connected)return; socket.emit('chat message',v); $('input').value=''; }
+    $('sendBtn').onclick=send;
+    $('input').addEventListener('keydown',e=>{ if(e.key==='Enter'){ e.preventDefault(); send(); }});
+    $('input').addEventListener('focus',()=> setTimeout(()=>{ fit(); scrollMsgs(); },300));
+    $('input').addEventListener('blur',()=> setTimeout(fit,100));
+
+    $('nextBtn').onclick=()=>{ addMsg('Finding someone new…','sys'); connected=false; socket.emit('find new partner'); };
+    $('reportBtn').onclick=()=>{ if(connected) socket.emit('report'); };
+    $('exitBtn').onclick=()=>{ socket.emit('leave chat'); $('input').blur(); showStart(); };
+    $('guessBtn').onclick=()=>{ if(connected) socket.emit('guess bot'); };
+
+    // typing indicator (so AI replies never appear instantly)
+    let typingEl=null, typingT=null;
+    function showTyping(){ hideTyping(); typingEl=document.createElement('div'); typingEl.className='msg them typing'; typingEl.textContent='typing…'; $('messages').appendChild(typingEl); scrollMsgs(); clearTimeout(typingT); typingT=setTimeout(hideTyping,7000); }
+    function hideTyping(){ if(typingEl){ typingEl.remove(); typingEl=null; } clearTimeout(typingT); }
+
+    socket.on('online', n => $('onlineCount').textContent=n);
+    socket.on('searching', d => { setStatus(d.message); connected=false; hideTyping(); });
+    socket.on('matched', d => { connected=true; setStatus(`Chatting with ${d.partnerName}`); addMsg(d.message,'sys'); hideTyping(); });
+    socket.on('partner typing', showTyping);
+    socket.on('chat message', d => { hideTyping(); addMsg(d.message,'them'); });
+    socket.on('own message', d => addMsg(d.message,'me'));
+    socket.on('partner left', () => { connected=false; setStatus('They left. Tap Next for someone new.'); addMsg('Stranger disconnected.','sys'); hideTyping(); });
+    socket.on('reveal', d => toast(d.wasBot ? '🤖 That was AI — nice catch' : '🧑 That was a real person'));
+    socket.on('notice', d => toast(d.message));
+    socket.on('blocked', d => { toast(d.message); showStart(); });
+  </script>
+</body>
+</html>
