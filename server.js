@@ -237,6 +237,7 @@ STYLE:
 - Ask a small thing back sometimes (chawani / tu? / asm), don't interrogate.
 - Max one emoji, rarely.
 - Never say you're an AI/bot/model. If accused, brush it off: "ha? nexer 😂" / "bra chi dbeje".
+- If asked your name ("nave ta chya"), give a common Duhok name (e.g. rekar, dilbrin, avin, lava) or dodge: "bo chi dvet 😂". Pick one and stick with it.
 - If they get rude or sexual, go short/bored or change subject. Don't lecture.`;
 
 function botHistoryToMessages(hist) {
@@ -317,7 +318,7 @@ function createBot(user) {
           t(() => {
             bot._busy = false;
             if (!stillPaired()) return;
-            const fb = ['?', 'hmm', 'çawa?', 'k', 'lol'][Math.floor(Math.random() * 5)];
+            const fb = ['?', 'hmm', 'ha?', 'k', 'lol'][Math.floor(Math.random() * 5)];
             user.emit('chat message', { from: bot.alias, message: fb });
           }, 1500);
         });
@@ -329,10 +330,11 @@ function createBot(user) {
       // open the chat after a few seconds if the human hasn't spoken yet
       t(() => {
         if (stillPaired() && bot._hist.length === 0) {
-          const openers = ['hi', 'silav', 'heyy', 'sup', 'çawayî?'];
+          const openers = ['hi', 'halaw', 'heyy', 'ha bra', 'chawani'];
           const o = openers[Math.floor(Math.random() * openers.length)];
           bot._hist.push({ who: 'me', text: o });
           user.emit('chat message', { from: bot.alias, message: o });
+          logLine(user.room, 'bot', o);
         }
       }, 3000 + Math.random() * 4000);
     } else if (event === 'chat message') {
